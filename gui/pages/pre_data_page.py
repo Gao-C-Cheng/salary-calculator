@@ -5,6 +5,8 @@
 """
 import os
 import sys
+import logging
+import traceback
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -16,9 +18,11 @@ from PyQt5.QtGui import QFont, QDragEnterEvent, QDropEvent
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+logger = logging.getLogger(__name__)
+
 
 class ProcessWorker(QThread):
-    """後台線程執行數據處理，避免阻塞 UI"""
+    """后台线程执行数据处理，避免阻塞 UI"""
     finished = pyqtSignal(bool, str)          # (success, message)
     progress = pyqtSignal(str)                # status text
 
@@ -31,7 +35,7 @@ class ProcessWorker(QThread):
         try:
             self.progress.emit("正在读取 Excel 文件…")
 
-            # 修改 MyPath.TEMP_DIR 為用戶選擇的輸出路徑
+            # 修改 MyPath.TEMP_DIR 为用户选择的输出路径
             import MyPath
             MyPath.TEMP_DIR = self.output_dir
 
@@ -40,17 +44,22 @@ class ProcessWorker(QThread):
             self.progress.emit("正在拆分数据…")
             split_budget_data(self.input_file)
 
-            # 統計生成的文件
+            # 统计生成的文件
             generated = [f for f in os.listdir(self.output_dir) if f.endswith('.xlsx')]
-            msg = f"数据拆分完成！共生成 {len(generated)} 个文件：\n" + "\n".join(f"  • {f}" for f in generated)
+            msg = "数据拆分完成！共生成 {} 个文件：\n".format(len(generated))
+            msg += "\n".join("  \u2022 {}".format(f) for f in generated)
             self.finished.emit(True, msg)
 
-        except Exception as e:
-            self.finished.emit(False, f"处理失败：{str(e)}")
+        except BaseException as e:
+            # 记录完整异常堆栈到 app.log
+            tb_text = traceback.format_exc()
+            logger.error("前置数据处理异常:\n%s", tb_text)
+            # 通过信号通知主线程显示错误状态和弹窗
+            self.finished.emit(False, "发生异常：请联系开发人员查看系统日志")
 
 
 class DropArea(QFrame):
-    """可拖拽的文件上傳區域"""
+    """可拖拽的文件上传区域"""
     file_dropped = pyqtSignal(str)
 
     def __init__(self):
@@ -64,7 +73,7 @@ class DropArea(QFrame):
         layout.setAlignment(Qt.AlignCenter)
         layout.setSpacing(12)
 
-        icon_label = QLabel("📂")
+        icon_label = QLabel("\U0001F4C2")
         icon_label.setAlignment(Qt.AlignCenter)
         icon_label.setStyleSheet("font-size: 48px; background: transparent; border: none;")
         layout.addWidget(icon_label)
@@ -108,7 +117,7 @@ class DropArea(QFrame):
 
 
 class PreDataPage(QWidget):
-    """前置数据处理 - 完整頁面"""
+    """前置数据处理 - 完整页面"""
 
     def __init__(self):
         super().__init__()
@@ -123,35 +132,37 @@ class PreDataPage(QWidget):
         layout.setContentsMargins(32, 28, 32, 28)
         layout.setSpacing(20)
 
-        # ---- 頁面標題 ----
+        # ---- 页面标题 ----
         title = QLabel("前置数据处理")
         title.setObjectName("pageTitle")
         layout.addWidget(title)
 
-        desc = QLabel("上传《预算单位人员类目录、数财对应指标、功能科目、对口股室归集表》Excel 文件，\n"
-                       "系统将自动拆分为《单位机构表》和《数财对应指标表》等数据文件。")
+        desc = QLabel(
+            "上传《预算单位人员类目录、数财对应指标、功能科目、对口股室归集表》Excel 文件，\n"
+            "系统将自动拆分为《单位机构表》和《数财对应指标表》等数据文件。"
+        )
         desc.setObjectName("pageDesc")
         desc.setWordWrap(True)
         layout.addWidget(desc)
 
-        # ---- 拖拽上傳區 ----
+        # ---- 拖拽上传区 ----
         self.drop_area = DropArea()
         self.drop_area.file_dropped.connect(self._on_file_dropped)
         layout.addWidget(self.drop_area)
 
-        # ---- 選擇文件按鈕 ----
-        browse_btn = QPushButton("📁  选择文件")
+        # ---- 选择文件按钮 ----
+        browse_btn = QPushButton("\U0001F4C1  选择文件")
         browse_btn.setObjectName("browseBtn")
         browse_btn.clicked.connect(self._browse_file)
         layout.addWidget(browse_btn, alignment=Qt.AlignCenter)
 
-        # ---- 已選文件顯示 ----
+        # ---- 已选文件显示 ----
         self.file_label = QLabel("尚未选择文件")
         self.file_label.setObjectName("fileLabel")
         self.file_label.setWordWrap(True)
         layout.addWidget(self.file_label)
 
-        # ---- 輸出路徑 + 開始轉換 按鈕行 ----
+        # ---- 输出路径 + 开始转换 按钮行 ----
         btn_row = QHBoxLayout()
         btn_row.setSpacing(16)
 
@@ -170,13 +181,13 @@ class PreDataPage(QWidget):
 
         layout.addLayout(btn_row)
 
-        # ---- 輸出路徑顯示 ----
-        self.output_label = QLabel(f"输出路径：{self.output_dir}")
+        # ---- 输出路径显示 ----
+        self.output_label = QLabel("输出路径：{}".format(self.output_dir))
         self.output_label.setObjectName("outputLabel")
         self.output_label.setWordWrap(True)
         layout.addWidget(self.output_label)
 
-        # ---- 進度條 ----
+        # ---- 进度条 ----
         self.progress_bar = QProgressBar()
         self.progress_bar.setObjectName("progressBar")
         self.progress_bar.setRange(0, 0)  # indeterminate
@@ -184,7 +195,7 @@ class PreDataPage(QWidget):
         self.progress_bar.setFixedHeight(6)
         layout.addWidget(self.progress_bar)
 
-        # ---- 狀態信息 ----
+        # ---- 状态信息 ----
         self.status_label = QLabel("")
         self.status_label.setObjectName("statusLabel")
         self.status_label.setWordWrap(True)
@@ -192,7 +203,7 @@ class PreDataPage(QWidget):
 
         layout.addStretch()
 
-    # -------------------------------------------------------- 事件處理
+    # -------------------------------------------------------- 事件处理
     def _on_file_dropped(self, path: str):
         self._set_file(path)
 
@@ -207,7 +218,7 @@ class PreDataPage(QWidget):
     def _set_file(self, path: str):
         self.selected_file = path
         filename = os.path.basename(path)
-        self.file_label.setText(f"已选择文件：{filename}")
+        self.file_label.setText("已选择文件：{}".format(filename))
         self.file_label.setToolTip(path)
         self.start_btn.setEnabled(True)
         self.status_label.setText("")
@@ -218,7 +229,7 @@ class PreDataPage(QWidget):
         )
         if dir_path:
             self.output_dir = dir_path
-            self.output_label.setText(f"输出路径：{self.output_dir}")
+            self.output_label.setText("输出路径：{}".format(self.output_dir))
 
     def _start_processing(self):
         if not self.selected_file:
@@ -226,17 +237,17 @@ class PreDataPage(QWidget):
             return
 
         if not os.path.exists(self.selected_file):
-            QMessageBox.warning(self, "提示", f"文件不存在：{self.selected_file}")
+            QMessageBox.warning(self, "提示", "文件不存在：{}".format(self.selected_file))
             return
 
-        # 禁用按鈕，顯示進度
+        # 禁用按钮，显示进度
         self.start_btn.setEnabled(False)
         self.output_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.status_label.setText("正在处理中，请稍候…")
         self.status_label.setStyleSheet("color: #3b82f6; font-size: 13px;")
 
-        # 啟動後台線程
+        # 启动后台线程
         self.worker = ProcessWorker(self.selected_file, self.output_dir)
         self.worker.progress.connect(self._on_progress)
         self.worker.finished.connect(self._on_finished)
@@ -252,14 +263,20 @@ class PreDataPage(QWidget):
 
         if success:
             self.status_label.setStyleSheet("color: #16a34a; font-size: 13px;")
-            self.status_label.setText(f"✅ {message}")
+            self.status_label.setText("\u2705 {}".format(message))
         else:
             self.status_label.setStyleSheet("color: #dc2626; font-size: 13px;")
-            self.status_label.setText(f"❌ {message}")
+            self.status_label.setText("\u274c {}".format(message))
+            # 弹窗提醒用户查看日志
+            QMessageBox.critical(
+                self,
+                "系统异常",
+                "发生异常：请联系开发人员查看系统日志"
+            )
 
         self.worker = None
 
-    # -------------------------------------------------------- 樣式
+    # -------------------------------------------------------- 样式
     def _apply_styles(self):
         self.setStyleSheet("""
             #pageTitle {
@@ -273,7 +290,7 @@ class PreDataPage(QWidget):
                 line-height: 1.6;
             }
 
-            /* 拖拽區域 */
+            /* 拖拽区域 */
             #dropArea {
                 border: 2px dashed #cbd5e1;
                 border-radius: 12px;
@@ -296,7 +313,7 @@ class PreDataPage(QWidget):
                 border: none;
             }
 
-            /* 選擇文件按鈕 */
+            /* 选择文件按钮 */
             #browseBtn {
                 background-color: #e2e8f0;
                 color: #334155;
@@ -316,7 +333,7 @@ class PreDataPage(QWidget):
                 padding: 4px 0;
             }
 
-            /* 輸出路徑按鈕 */
+            /* 输出路径按钮 */
             #outputBtn {
                 background-color: #f1f5f9;
                 color: #334155;
@@ -335,7 +352,7 @@ class PreDataPage(QWidget):
                 color: #94a3b8;
             }
 
-            /* 開始轉換按鈕 */
+            /* 开始转换按钮 */
             #startBtn {
                 background-color: #3b82f6;
                 color: white;
@@ -358,7 +375,7 @@ class PreDataPage(QWidget):
                 padding: 2px 0;
             }
 
-            /* 進度條 */
+            /* 进度条 */
             #progressBar {
                 border: none;
                 border-radius: 3px;
