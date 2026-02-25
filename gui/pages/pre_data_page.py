@@ -3,6 +3,7 @@
 支持拖拽上传和选择路径上传 Excel 文件，
 提供「选择输出路径」和「开始转换」按钮。
 """
+import logging
 import os
 import sys
 
@@ -46,6 +47,7 @@ class ProcessWorker(QThread):
             self.finished.emit(True, msg)
 
         except Exception as e:
+            logging.error(f"处理失败: {str(e)}")
             self.finished.emit(False, f"处理失败：{str(e)}")
 
 
