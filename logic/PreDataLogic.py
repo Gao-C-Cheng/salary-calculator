@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 def split_budget_data(file_path):
     # 读取Excel文件,如果文件不存在抛出异常
     df = read_excel(file_path, sheet_name=0, header=2)
-    df.loc[:,"人员类项目目录（扩展字段1）"] = df.loc[:,"人员类项目目录（扩展字段1）"].astype(str).str.zfill(4)
+    # 处理拓展字段中可能遇到的各类问题
+    df["人员类项目目录（扩展字段1）"] = df["人员类项目目录（扩展字段1）"].astype(object).astype(str).str.zfill(4)
     print(df)
     print(df.dtypes)
     logger.debug(df.keys())
